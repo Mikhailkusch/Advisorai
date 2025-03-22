@@ -126,7 +126,7 @@ export default function EmailList() {
       
       const response = await generateAIResponse(prompt, 'Email response generation');
       
-      const draftResponse = await fetch('http://localhost:3000/api/drafts', {
+      const draftResponse = await fetch(`${import.meta.env.VITE_API_URL}/api/drafts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
