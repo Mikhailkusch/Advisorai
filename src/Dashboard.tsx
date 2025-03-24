@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { Users, Mail, Bell, Settings, ChevronDown, Search, Send, Plus } from 'lucide-react';
+import { Users, Mail, Bell, Settings, ChevronDown, Search, Send, Plus, Pencil } from 'lucide-react';
 import { mockResponses } from '../data';
 import { generateAIResponse } from '../lib/openai';
 import { AIResponseRequest, AIResponse, Client, PredefinedPrompt } from '../types';
@@ -9,22 +9,25 @@ import AddClientModal from './AddClientModal';
 import AddPromptModal from './AddPromptModal';
 import EditResponseModal from './EditResponseModal';
 import EmailList from './EmailList';
+import EditPromptModal from './EditPromptModal';
 
 export default function Dashboard() {
-  const [selectedTab, setSelectedTab] = useState<'responses' | 'clients' | 'emails'>('responses');
+  const [selectedTab, setSelectedTab] = useState<'responses' | 'clients' | 'emails' | 'prompts'>('responses');
   const [isGenerating, setIsGenerating] = useState(false);
   const [responses, setResponses] = useState<AIResponse[]>(mockResponses);
   const [showAddNewMenu, setShowAddNewMenu] = useState(false);
   const [showAddClientModal, setShowAddClientModal] = useState(false);
   const [showAddPromptModal, setShowAddPromptModal] = useState(false);
+  const [editingPrompt, setEditingPrompt] = useState<PredefinedPrompt | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [prompts, setPrompts] = useState<PredefinedPrompt[]>([]);
   const [editingResponse, setEditingResponse] = useState<AIResponse | null>(null);
   const [newResponse, setNewResponse] = useState<AIResponseRequest>({
     clientId: '',
-    category: 'general-advice',
+    category: 'general-enquiry',
     prompt: '',
-    context: ''
+    context: '',
+    responseType: 'email'
   });
 
   useEffect(() => {
@@ -62,7 +65,7 @@ export default function Dashboard() {
     try {
       const { data, error } = await supabase
         .from('prompts')
-        .select('*')
+        .select('id, category, prompt, description, response_type')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -73,6 +76,7 @@ export default function Dashboard() {
           category: prompt.category,
           prompt: prompt.prompt,
           description: prompt.description,
+          responseType: prompt.response_type
         }));
         setPrompts(formattedPrompts);
       }
@@ -87,7 +91,8 @@ export default function Dashboard() {
       setNewResponse(prev => ({
         ...prev,
         prompt: selectedPrompt.prompt,
-        category: selectedPrompt.category
+        category: selectedPrompt.category,
+        responseType: selectedPrompt.responseType
       }));
     }
   };
@@ -119,9 +124,10 @@ Additional Context: ${newResponse.context}`;
 
       setNewResponse({
         clientId: '',
-        category: 'general-advice',
+        category: 'general-enquiry',
         prompt: '',
-        context: ''
+        context: '',
+        responseType: 'email'
       });
 
     } catch (error) {
@@ -146,6 +152,24 @@ Additional Context: ${newResponse.context}`;
 
   const handlePromptAdded = (newPrompt: PredefinedPrompt) => {
     setPrompts(prev => [newPrompt, ...prev]);
+  };
+
+  const handlePromptUpdated = (updatedPrompt: PredefinedPrompt) => {
+    setPrompts(prev =>
+      prev.map(prompt =>
+        prompt.id === updatedPrompt.id ? {
+          ...prompt,
+          category: updatedPrompt.category,
+          prompt: updatedPrompt.prompt,
+          description: updatedPrompt.description,
+          responseType: updatedPrompt.responseType
+        } : prompt
+      )
+    );
+  };
+
+  const handlePromptDeleted = (promptId: string) => {
+    setPrompts(prev => prev.filter(prompt => prompt.id !== promptId));
   };
 
   const handleEditResponse = (response: AIResponse) => {
@@ -175,6 +199,15 @@ Additional Context: ${newResponse.context}`;
         <AddPromptModal
           onClose={() => setShowAddPromptModal(false)}
           onPromptAdded={handlePromptAdded}
+        />
+      )}
+      
+      {editingPrompt && (
+        <EditPromptModal
+          prompt={editingPrompt}
+          onClose={() => setEditingPrompt(null)}
+          onPromptUpdated={handlePromptUpdated}
+          onPromptDeleted={handlePromptDeleted}
         />
       )}
       
@@ -279,6 +312,16 @@ Additional Context: ${newResponse.context}`;
               Clients
             </button>
             <button
+              onClick={() => setSelectedTab('prompts')}
+              className={`${
+                selectedTab === 'prompts'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            >
+              Prompts
+            </button>
+            <button
               onClick={() => setSelectedTab('emails')}
               className={`${
                 selectedTab === 'emails'
@@ -294,6 +337,45 @@ Additional Context: ${newResponse.context}`;
         {/* Content */}
         {selectedTab === 'emails' ? (
           <EmailList />
+        ) : selectedTab === 'prompts' ? (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-lg font-medium text-gray-900">Saved Prompts</h2>
+              <button
+                onClick={() => setShowAddPromptModal(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add New Prompt
+              </button>
+            </div>
+
+            {prompts.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-500">No prompts found.</p>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {prompts.map((prompt) => (
+                  <div key={prompt.id} className="bg-white rounded-lg shadow p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-lg font-medium text-gray-900">{prompt.description}</h3>
+                        <p className="text-sm text-gray-500 capitalize">{prompt.category.replace('-', ' ')}</p>
+                      </div>
+                      <button
+                        onClick={() => setEditingPrompt(prompt)}
+                        className="p-2 text-gray-400 hover:text-gray-500"
+                      >
+                        <Pencil className="w-5 h-5" />
+                      </button>
+                    </div>
+                    <p className="text-gray-600 whitespace-pre-wrap">{prompt.prompt}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         ) : selectedTab === 'responses' ? (
           <>
             {/* New Response Generator */}
@@ -328,10 +410,13 @@ Additional Context: ${newResponse.context}`;
                     onChange={(e) => setNewResponse(prev => ({ ...prev, category: e.target.value as AIResponse['category'] }))}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                   >
-                    <option value="general-advice">General Advice</option>
-                    <option value="investment-update">Investment Update</option>
                     <option value="tax-planning">Tax Planning</option>
-                    <option value="onboarding">Onboarding</option>
+                    <option value="risk-planning">Risk Planning</option>
+                    <option value="estate-planning">Estate Planning</option>
+                    <option value="offshore-investment">Offshore Investment</option>
+                    <option value="retirement-planning">Retirement Planning</option>
+                    <option value="investment-planning">Investment Planning</option>
+                    <option value="general-enquiry">General Enquiry</option>
                   </select>
                 </div>
                 <div>

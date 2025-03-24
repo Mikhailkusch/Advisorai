@@ -23,7 +23,7 @@ export interface AIResponse {
   content: string;
   status: 'pending' | 'approved' | 'rejected';
   createdAt: Date;
-  category: 'onboarding' | 'investment-update' | 'tax-planning' | 'general-advice';
+  category: 'tax-planning' | 'risk-planning' | 'estate-planning' | 'offshore-investment' | 'retirement-planning' | 'investment-planning' | 'general-enquiry';
   missingInfo: string[];
   responseType: 'email' | 'proposal';
 }

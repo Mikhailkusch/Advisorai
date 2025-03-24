@@ -12,7 +12,7 @@ export default function AddPromptModal({ onClose, onPromptAdded }: AddPromptModa
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
-    category: 'general-advice' as PredefinedPrompt['category'],
+    category: 'general-enquiry' as PredefinedPrompt['category'],
     prompt: '',
     description: '',
     responseType: 'email' as PredefinedPrompt['responseType']
@@ -143,10 +143,13 @@ export default function AddPromptModal({ onClose, onPromptAdded }: AddPromptModa
               onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value as PredefinedPrompt['category'] }))}
               className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-gray-100 focus:border-primary-500 focus:ring-primary-500"
             >
-              <option value="general-advice">General Advice</option>
-              <option value="investment-update">Investment Update</option>
               <option value="tax-planning">Tax Planning</option>
-              <option value="onboarding">Onboarding</option>
+              <option value="risk-planning">Risk Planning</option>
+              <option value="estate-planning">Estate Planning</option>
+              <option value="offshore-investment">Offshore Investment</option>
+              <option value="retirement-planning">Retirement Planning</option>
+              <option value="investment-planning">Investment Planning</option>
+              <option value="general-enquiry">General Enquiry</option>
             </select>
           </div>
           <div>

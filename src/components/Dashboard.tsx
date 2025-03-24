@@ -153,21 +153,30 @@ export default function Dashboard({ user }: { user: any }) {
   };
 
   const fetchPrompts = async () => {
-    const { data, error } = await supabase
-      .from('prompts')
-      .select('*')
-      .order('created_at', { ascending: false });
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
 
-    if (error) throw error;
+      const { data, error } = await supabase
+        .from('prompts')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
 
-    if (data) {
-      setPrompts(data.map(prompt => ({
-        id: prompt.id,
-        category: prompt.category,
-        prompt: prompt.prompt,
-        description: prompt.description,
-        responseType: prompt.response_type
-      })));
+      if (error) throw error;
+
+      if (data) {
+        setPrompts(data.map(prompt => ({
+          id: prompt.id,
+          category: prompt.category,
+          prompt: prompt.prompt,
+          description: prompt.description,
+          responseType: prompt.response_type
+        })));
+      }
+    } catch (error) {
+      console.error('Error fetching prompts:', error);
+      setError('Failed to fetch prompts. Please try again.');
     }
   };
 
@@ -399,6 +408,35 @@ Additional Context: ${request.context}`;
                 ))}
               </div>
             )}
+
+            {showAddPromptModal && (
+              <AddPromptModal
+                onClose={() => setShowAddPromptModal(false)}
+                onPromptAdded={(newPrompt) => {
+                  setPrompts(prev => [newPrompt, ...prev]);
+                  setShowAddPromptModal(false);
+                }}
+              />
+            )}
+
+            {editingPrompt && (
+              <EditPromptModal
+                prompt={editingPrompt}
+                onClose={() => setEditingPrompt(null)}
+                onPromptUpdated={(updatedPrompt) => {
+                  setPrompts(prev =>
+                    prev.map(prompt =>
+                      prompt.id === updatedPrompt.id ? updatedPrompt : prompt
+                    )
+                  );
+                  setEditingPrompt(null);
+                }}
+                onPromptDeleted={(promptId) => {
+                  setPrompts(prev => prev.filter(prompt => prompt.id !== promptId));
+                  setEditingPrompt(null);
+                }}
+              />
+            )}
           </div>
         );
       
@@ -407,7 +445,7 @@ Additional Context: ${request.context}`;
           <>
             <ResponseGenerator
               clients={displayedClients}
-              prompts={displayedPrompts.filter(p => p.responseType === 'proposal')}
+              prompts={prompts.filter(p => p.responseType === 'proposal')}
               onGenerate={handleGenerateResponse}
               isGenerating={isGenerating}
             />
@@ -447,7 +485,7 @@ Additional Context: ${request.context}`;
           <>
             <ResponseGenerator
               clients={displayedClients}
-              prompts={displayedPrompts.filter(p => p.responseType === 'email')}
+              prompts={prompts.filter(p => p.responseType === 'email')}
               onGenerate={handleGenerateResponse}
               isGenerating={isGenerating}
             />
@@ -736,6 +774,24 @@ Additional Context: ${request.context}`;
           <ImportClientsModal
             onClose={() => setShowImportModal(false)}
             onClientsImported={handleClientsImported}
+          />
+        )}
+
+        {/* Edit Client Modal */}
+        {editingClient && (
+          <EditClientModal
+            client={editingClient}
+            onClose={() => setEditingClient(null)}
+            onClientUpdated={(updatedClient) => {
+              setClients(prev => prev.map(client => 
+                client.id === updatedClient.id ? updatedClient : client
+              ));
+              setEditingClient(null);
+            }}
+            onClientDeleted={(clientId) => {
+              setClients(prev => prev.filter(client => client.id !== clientId));
+              setEditingClient(null);
+            }}
           />
         )}
 

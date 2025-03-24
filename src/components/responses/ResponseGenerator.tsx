@@ -13,7 +13,7 @@ interface ResponseGeneratorProps {
 export default function ResponseGenerator({ clients, prompts, onGenerate, isGenerating }: ResponseGeneratorProps) {
   const [request, setRequest] = useState<AIResponseRequest>({
     clientId: '',
-    category: 'general-advice',
+    category: 'general-enquiry',
     prompt: '',
     context: '',
     responseType: 'email'
@@ -108,10 +108,13 @@ export default function ResponseGenerator({ clients, prompts, onGenerate, isGene
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               tabIndex={-1}
             >
-              <option value="general-advice">General Advice</option>
-              <option value="investment-update">Investment Update</option>
               <option value="tax-planning">Tax Planning</option>
-              <option value="onboarding">Onboarding</option>
+              <option value="risk-planning">Risk Planning</option>
+              <option value="estate-planning">Estate Planning</option>
+              <option value="offshore-investment">Offshore Investment</option>
+              <option value="retirement-planning">Retirement Planning</option>
+              <option value="investment-planning">Investment Planning</option>
+              <option value="general-enquiry">General Enquiry</option>
             </select>
           </div>
         </div>

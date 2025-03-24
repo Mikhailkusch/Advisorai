@@ -62,6 +62,19 @@ export default function ClientSummary({ client, notes, responses, tasks, onError
   const fetchLatestSummary = async () => {
     try {
       setError(null);
+      
+      // Check authentication state
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+      if (authError) {
+        console.error('Auth error:', authError);
+        throw new Error('Authentication error');
+      }
+      if (!session) {
+        console.error('No active session');
+        throw new Error('Not authenticated');
+      }
+      
+      console.log('Fetching summary for client:', client.id);
       const { data, error } = await supabase
         .from('client_summaries')
         .select('*')
@@ -70,8 +83,13 @@ export default function ClientSummary({ client, notes, responses, tasks, onError
         .limit(1)
         .single();
 
-      if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
-        throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        if (error.code === 'PGRST116') {
+          // No rows returned - this is not an error, just means no summary exists yet
+          return;
+        }
+        throw new Error(`Database error: ${error.message} (${error.code})`);
       }
 
       if (data) {
@@ -79,8 +97,9 @@ export default function ClientSummary({ client, notes, responses, tasks, onError
       }
     } catch (error) {
       console.error('Error fetching summary:', error);
-      setError('Failed to fetch client summary');
-      onError('Failed to fetch client summary');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch client summary';
+      setError(errorMessage);
+      onError(errorMessage);
     }
   };
 
