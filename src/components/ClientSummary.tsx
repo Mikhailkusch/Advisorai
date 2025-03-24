@@ -21,16 +21,47 @@ interface Summary {
   generated_at: string;
 }
 
+// Error boundary component to prevent infinite loops
+class MarkdownErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-4 bg-red-900/50 text-red-200 rounded-md">
+          Error rendering markdown content. Please try regenerating the summary.
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 export default function ClientSummary({ client, notes, responses, tasks, onError }: ClientSummaryProps) {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchLatestSummary();
-  }, [client.id]);
+    if (client?.id) {
+      fetchLatestSummary();
+    }
+  }, [client?.id]);
 
   const fetchLatestSummary = async () => {
     try {
+      setError(null);
       const { data, error } = await supabase
         .from('client_summaries')
         .select('*')
@@ -48,12 +79,17 @@ export default function ClientSummary({ client, notes, responses, tasks, onError
       }
     } catch (error) {
       console.error('Error fetching summary:', error);
+      setError('Failed to fetch client summary');
       onError('Failed to fetch client summary');
     }
   };
 
   const handleGenerateSummary = async () => {
+    if (isGenerating) return;
+    
     setIsGenerating(true);
+    setError(null);
+    
     try {
       const response = await fetch('http://localhost:3000/api/generate-summary', {
         method: 'POST',
@@ -62,14 +98,15 @@ export default function ClientSummary({ client, notes, responses, tasks, onError
         },
         body: JSON.stringify({
           client,
-          notes,
-          responses,
-          tasks
+          notes: notes.slice(0, 10),
+          responses: responses.slice(0, 5),
+          tasks: tasks.slice(0, 5)
         })
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate summary');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate summary');
       }
 
       const { summary: newSummary } = await response.json();
@@ -88,6 +125,7 @@ export default function ClientSummary({ client, notes, responses, tasks, onError
       setSummary(data);
     } catch (error) {
       console.error('Error generating summary:', error);
+      setError(error instanceof Error ? error.message : 'Failed to generate client summary');
       onError('Failed to generate client summary');
     } finally {
       setIsGenerating(false);
@@ -95,29 +133,24 @@ export default function ClientSummary({ client, notes, responses, tasks, onError
   };
 
   const markdownComponents: Components = {
-    h1: ({children}) => (
-      <h1 className="text-2xl font-bold text-gray-100 mt-6 mb-4">{children}</h1>
-    ),
-    h2: ({children}) => (
-      <h2 className="text-xl font-semibold text-gray-200 mt-4 mb-3">{children}</h2>
-    ),
-    h3: ({children}) => (
-      <h3 className="text-lg font-medium text-gray-300 mt-3 mb-2">{children}</h3>
-    ),
-    strong: ({children}) => (
-      <strong className="text-primary-400 font-semibold">{children}</strong>
-    ),
+    h1: ({children}) => <h1 className="text-2xl font-bold text-gray-100 mt-6 mb-4">{children}</h1>,
+    h2: ({children}) => <h2 className="text-xl font-semibold text-gray-200 mt-4 mb-3">{children}</h2>,
+    h3: ({children}) => <h3 className="text-lg font-medium text-gray-300 mt-3 mb-2">{children}</h3>,
+    strong: ({children}) => <strong className="text-primary-400 font-semibold">{children}</strong>,
     blockquote: ({children}) => (
       <blockquote className="border-l-4 border-primary-500 pl-4 my-4 text-gray-300 italic">
         {children}
       </blockquote>
     ),
-    ul: ({children}) => (
-      <ul className="list-disc list-inside space-y-1 text-gray-300">{children}</ul>
-    ),
-    li: ({children}) => (
-      <li className="text-gray-300">{children}</li>
-    )
+    ul: ({children}) => <ul className="list-disc list-inside space-y-1 text-gray-300">{children}</ul>,
+    li: ({children}) => <li className="text-gray-300">{children}</li>,
+    // Simplified table components to prevent parsing issues
+    table: ({children}) => <div className="overflow-x-auto mt-4 mb-4">{children}</div>,
+    thead: ({children}) => <div className="font-semibold bg-gray-700 p-2">{children}</div>,
+    tbody: ({children}) => <div className="divide-y divide-gray-700">{children}</div>,
+    tr: ({children}) => <div className="flex flex-wrap">{children}</div>,
+    td: ({children}) => <div className="flex-1 min-w-[200px] p-2 text-gray-300 break-words">{children}</div>,
+    th: ({children}) => <div className="flex-1 min-w-[200px] p-2 text-gray-200 font-semibold">{children}</div>
   };
 
   return (
@@ -134,16 +167,26 @@ export default function ClientSummary({ client, notes, responses, tasks, onError
         </button>
       </div>
       
+      {error && (
+        <div className="mb-4 p-3 bg-red-900/50 text-red-200 rounded-md">
+          {error}
+        </div>
+      )}
+      
       {summary ? (
         <div className="space-y-4">
-          <div className="prose prose-invert prose-headings:text-gray-100 prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-strong:text-primary-400 prose-blockquote:border-primary-500 prose-blockquote:text-gray-300 max-w-none">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={markdownComponents}
-            >
-              {summary.content}
-            </ReactMarkdown>
-          </div>
+          <MarkdownErrorBoundary>
+            <div className="prose prose-invert prose-headings:text-gray-100 prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-strong:text-primary-400 prose-blockquote:border-primary-500 prose-blockquote:text-gray-300 max-w-none">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={markdownComponents}
+                skipHtml={true}
+                unwrapDisallowed={true}
+              >
+                {summary.content || ''}
+              </ReactMarkdown>
+            </div>
+          </MarkdownErrorBoundary>
           <p className="text-sm text-gray-400">
             Last generated: {new Date(summary.generated_at).toLocaleString()}
           </p>

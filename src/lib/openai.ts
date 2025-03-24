@@ -1,4 +1,13 @@
-// Remove the direct OpenAI initialization
+// Types for email categorization
+type EmailCategory = 
+  | 'tax-planning'
+  | 'risk-planning'
+  | 'estate-planning'
+  | 'offshore-investment'
+  | 'retirement-planning'
+  | 'investment-planning'
+  | 'general-enquiry';
+
 interface ClientData {
   name: string;
   email: string;
@@ -8,21 +17,86 @@ interface ClientData {
   lastContact: Date;
 }
 
-// Helper function to generate AI responses
+interface AIResponse {
+  summary: string;
+  emailResponse: string;
+  category: EmailCategory;
+  missingInfo: string[];
+}
+
+// Function to analyze email content and determine category
+async function analyzeEmailContent(emailContent: string): Promise<EmailCategory> {
+  try {
+    const response = await fetch('http://localhost:3000/api/analyze-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        emailContent,
+        categories: [
+          'tax-planning',
+          'risk-planning',
+          'estate-planning',
+          'offshore-investment',
+          'retirement-planning',
+          'investment-planning',
+          'general-enquiry'
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to analyze email content');
+    }
+
+    const result = await response.json();
+    return result.category as EmailCategory;
+  } catch (error) {
+    console.error('Error analyzing email:', error);
+    return 'general-enquiry'; // Default category if analysis fails
+  }
+}
+
+// Function to find appropriate prompt based on category
+async function findAppropriatePrompt(category: EmailCategory): Promise<string> {
+  try {
+    const response = await fetch('http://localhost:3000/api/prompts', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch prompts');
+    }
+
+    const prompts = await response.json();
+    const matchingPrompt = prompts.find((p: any) => p.category === category);
+    
+    if (!matchingPrompt) {
+      throw new Error(`No prompt found for category: ${category}`);
+    }
+
+    return matchingPrompt.prompt;
+  } catch (error) {
+    console.error('Error finding prompt:', error);
+    throw error;
+  }
+}
+
+// Main function to generate AI response
 export async function generateAIResponse(
   prompt: string,
   clientContext: string,
   responseType: 'email' | 'proposal' = 'email'
-): Promise<{
-  summary: string;
-  emailResponse: string;
-  category: string;
-  missingInfo: string[];
-}> {
+): Promise<AIResponse> {
   try {
-    console.log('🤖 Generating AI response...');
+    console.log('🤖 Starting AI response generation...');
 
-    const response = await fetch('/.netlify/functions/generate', {
+    // Generate response using the prompt and client context
+    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -41,7 +115,7 @@ export async function generateAIResponse(
     }
 
     const result = await response.json();
-    console.log('✅ Server response:', result);
+    console.log('✅ Generated response successfully');
     return result;
   } catch (error) {
     console.error('❌ Error generating AI response:', error);
@@ -90,6 +164,6 @@ export async function generateClientSummary(
   return generateAIResponse(
     'Generate a comprehensive client summary',
     JSON.stringify(clientData, null, 2),
-    'email'
+    clientData.profile
   ).then(response => response.emailResponse);
 }

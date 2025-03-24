@@ -28,7 +28,7 @@ const supabase = createClient(
 
 // Initialize OpenAI client
 const openai = new OpenAI({
-  apiKey: process.env.VITE_OPENAI_API_KEY
+  apiKey: process.env.OPENAI_API_KEY
 });
 
 // Gmail API scopes
@@ -307,10 +307,17 @@ app.post('/api/drafts', async (req, res) => {
 // Generate AI Response endpoint
 app.post('/api/generate', async (req, res) => {
   try {
+    console.log('Received generate request:', req.body);
     const { prompt, clientContext, responseType = 'email' } = req.body;
 
     if (!prompt || !clientContext) {
+      console.error('Missing required parameters:', { prompt, clientContext });
       return res.status(400).json({ error: 'Missing required parameters' });
+    }
+
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('OpenAI API key is not configured');
+      return res.status(500).json({ error: 'OpenAI API key is not configured' });
     }
 
     // Parse client context into structured data
@@ -329,51 +336,79 @@ app.post('/api/generate', async (req, res) => {
             clientData.portfolioValue = parseFloat(value.replace(/[R$,]/g, ''));
             break;
           case 'Additional Context':
-            // This will be handled separately
+            clientData.additionalContext = value;
             break;
         }
       }
     });
 
-    // Get the additional context from the last line
-    const additionalContext = clientContext.split('Additional Context:')[1]?.trim() || '';
+    console.log('Parsed client data:', clientData);
 
     // Create structured client data JSON
     const structuredClientData = JSON.stringify(clientData, null, 2);
 
     // Construct the system prompt based on response type
     const systemPrompt = responseType === 'email' 
-      ? `You are a professional financial advisor assistant. Provide clear, compliant financial advice while maintaining a professional tone. Structure your response in the following format:
+      ? `You are a professional financial advisor assistant. Provide clear, compliant financial advice while maintaining a professional tone.
+
+IMPORTANT: Your response MUST follow this EXACT format, with each section starting on a new line:
 
 Summary:
-[Brief summary of the key points]
+[Write a brief 2-3 sentence summary of the key points]
 
 Email Response:
-[Your detailed email response]
+[Write your detailed email response here]
 
 Category:
-[One of: investment-update, tax-planning, general-advice, or onboarding]
+[Choose exactly one: investment-update, tax-planning, general-advice, or onboarding]
 
 Missing Information:
-[List any missing information that would be helpful for a more complete response]`
-      : `You are a professional financial advisor assistant. Create detailed investment proposals while maintaining a professional tone. Structure your response in the following format:
+[If any information is missing, list it here, one item per line]
+
+Example format:
+Summary:
+This response addresses the client's questions about tax planning for their investment portfolio.
+
+Email Response:
+Dear [Client Name],
+
+Thank you for your inquiry about tax planning...
+
+Category:
+tax-planning
+
+Missing Information:
+- Current tax bracket
+- Specific investment holdings`
+      : `You are a professional financial advisor assistant. Create detailed investment proposals while maintaining a professional tone.
+
+IMPORTANT: Your response MUST follow this EXACT format, with each section starting on a new line:
 
 Summary:
-[Brief executive summary]
+[Write a brief 2-3 sentence executive summary]
 
 Proposal:
-[Detailed investment proposal including:
-- Current Situation Analysis
-- Investment Objectives
-- Recommended Strategy
-- Implementation Plan
-- Risk Considerations]
+[Write your detailed proposal here]
 
 Category:
-[One of: investment-update, tax-planning, general-advice, or onboarding]
+[Choose exactly one: investment-update, tax-planning, general-advice, or onboarding]
 
 Missing Information:
-[List any missing information that would be helpful for a more complete proposal]`;
+[If any information is missing, list it here, one item per line]
+
+Example format:
+Summary:
+This proposal outlines a comprehensive investment strategy for the client's retirement portfolio.
+
+Proposal:
+Based on your current financial situation...
+
+Category:
+investment-update
+
+Missing Information:
+- Current investment portfolio details
+- Retirement timeline`;
 
     // Construct the complete prompt
     const completePrompt = `
@@ -384,9 +419,11 @@ Master Prompt:
 ${prompt}
 
 Additional Context:
-${additionalContext}
+${clientData.additionalContext || ''}
 
 Please provide a ${responseType === 'email' ? 'professional email response' : 'detailed investment proposal'} based on the above information.`;
+
+    console.log('Sending request to OpenAI with prompt:', completePrompt);
 
     const completion = await openai.chat.completions.create({
       messages: [
@@ -406,8 +443,12 @@ Please provide a ${responseType === 'email' ? 'professional email response' : 'd
 
     const response = completion.choices[0]?.message?.content;
     if (!response) {
+      console.error('No response generated from OpenAI');
       return res.status(500).json({ error: 'No response generated from OpenAI' });
     }
+
+    console.log('Raw GPT Response:', response);
+    console.log('Response sections:', response.split(/(?=^Summary:|^Email Response:|^Proposal:|^Category:|^Missing Information:)/m));
 
     // Parse the response
     const result = {
@@ -422,33 +463,50 @@ Please provide a ${responseType === 'email' ? 'professional email response' : 'd
 
     for (const section of sections) {
       const trimmedSection = section.trim();
+      console.log('Processing section:', trimmedSection.substring(0, 50) + '...');
       
       if (trimmedSection.startsWith('Summary:')) {
-        result.summary = trimmedSection.replace('Summary:', '').trim();
+        result.summary = trimmedSection
+          .replace('Summary:', '')
+          .replace(/^\s+|\s+$/g, '')
+          .replace(/\n+/g, ' ');
+        console.log('Found summary:', result.summary);
       } else if (trimmedSection.startsWith('Email Response:') || trimmedSection.startsWith('Proposal:')) {
         result.emailResponse = trimmedSection
-          .replace('Email Response:', '')
-          .replace('Proposal:', '')
-          .trim();
+          .replace(/^(Email Response:|Proposal:)/, '')
+          .replace(/^\s+|\s+$/g, '');
+        console.log('Found email/proposal response');
       } else if (trimmedSection.startsWith('Category:')) {
-        const category = trimmedSection.replace('Category:', '').trim().toLowerCase();
+        const category = trimmedSection
+          .replace('Category:', '')
+          .replace(/^\s+|\s+$/g, '')
+          .toLowerCase();
         if (['investment-update', 'tax-planning', 'general-advice', 'onboarding'].includes(category)) {
           result.category = category;
+          console.log('Found category:', result.category);
         }
       } else if (trimmedSection.startsWith('Missing Information:')) {
         result.missingInfo = trimmedSection
           .replace('Missing Information:', '')
-          .trim()
           .split('\n')
           .map(item => item.trim())
-          .filter(item => item.length > 0);
+          .filter(item => item.length > 0 && !item.startsWith('-'))
+          .map(item => item.replace(/^-\s*/, ''));
+        console.log('Found missing info:', result.missingInfo);
       }
     }
 
+    // Validate the result
+    if (!result.summary || !result.emailResponse) {
+      console.error('Missing required sections in response');
+      return res.status(500).json({ error: 'Invalid response format from OpenAI' });
+    }
+
+    console.log('Final parsed result:', result);
     res.json(result);
   } catch (error) {
     console.error('Error generating AI response:', error);
-    res.status(500).json({ error: 'Failed to generate AI response' });
+    res.status(500).json({ error: 'Failed to generate AI response', details: error.message });
   }
 });
 
@@ -456,6 +514,15 @@ Please provide a ${responseType === 'email' ? 'professional email response' : 'd
 app.post('/api/generate-summary', async (req, res) => {
   try {
     const { client, notes, responses, tasks } = req.body;
+
+    if (!client || !client.id) {
+      return res.status(400).json({ error: 'Invalid client data' });
+    }
+
+    // Validate and sanitize input data
+    const sanitizedNotes = Array.isArray(notes) ? notes.slice(0, 10) : [];
+    const sanitizedResponses = Array.isArray(responses) ? responses.slice(0, 5) : [];
+    const sanitizedTasks = Array.isArray(tasks) ? tasks.slice(0, 5) : [];
 
     const systemPrompt = `You are a professional financial advisor assistant creating a comprehensive client summary. Follow these guidelines:
 
@@ -509,16 +576,14 @@ app.post('/api/generate-summary', async (req, res) => {
         status: client.status,
         lastContact: client.lastContact,
       },
-      // Sort notes by date and mark them as high priority
-      notes: notes
+      notes: sanitizedNotes
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
         .map(note => ({
           content: note.content,
           date: note.created_at,
           priority: 'high'
         })),
-      // Include full response content for context
-      responses: responses
+      responses: sanitizedResponses
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
         .map(response => ({
           summary: response.summary,
@@ -529,7 +594,7 @@ app.post('/api/generate-summary', async (req, res) => {
           date: response.created_at,
           priority: 'high'
         })),
-      tasks: tasks
+      tasks: sanitizedTasks
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
         .map(task => ({
           title: task.title,
@@ -563,7 +628,69 @@ app.post('/api/generate-summary', async (req, res) => {
     res.json({ summary });
   } catch (error) {
     console.error('Error generating client summary:', error);
-    res.status(500).json({ error: 'Failed to generate client summary' });
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Failed to generate client summary'
+    });
+  }
+});
+
+// Email Analysis endpoint
+app.post('/api/analyze-email', async (req, res) => {
+  try {
+    const { emailContent, categories } = req.body;
+
+    if (!emailContent || !categories) {
+      return res.status(400).json({ error: 'Missing required parameters' });
+    }
+
+    const systemPrompt = `You are an expert financial advisor assistant. Analyze the following email content and categorize it into one of the provided categories. Choose the most appropriate category based on the main topic and intent of the email.
+
+Available categories:
+${categories.map(cat => `- ${cat.replace(/-/g, ' ')}`).join('\n')}
+
+Respond with ONLY the category name, nothing else.`;
+
+    const completion = await openai.chat.completions.create({
+      messages: [
+        {
+          role: 'system',
+          content: systemPrompt
+        },
+        {
+          role: 'user',
+          content: emailContent
+        }
+      ],
+      model: 'gpt-3.5-turbo',
+      temperature: 0.3,
+      max_tokens: 50
+    });
+
+    const category = completion.choices[0]?.message?.content?.trim().toLowerCase();
+    
+    if (!category || !categories.includes(category)) {
+      return res.status(500).json({ error: 'Failed to determine valid category' });
+    }
+
+    res.json({ category });
+  } catch (error) {
+    console.error('Error analyzing email:', error);
+    res.status(500).json({ error: 'Failed to analyze email content' });
+  }
+});
+
+// Prompts endpoint
+app.get('/api/prompts', async (req, res) => {
+  try {
+    const { data: prompts, error } = await supabase
+      .from('prompts')
+      .select('*');
+
+    if (error) throw error;
+    res.json(prompts);
+  } catch (error) {
+    console.error('Error fetching prompts:', error);
+    res.status(500).json({ error: 'Failed to fetch prompts' });
   }
 });
 

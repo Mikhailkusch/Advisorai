@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Send } from 'lucide-react';
+import { Send, ChevronDown } from 'lucide-react';
 import type { Client, PredefinedPrompt, AIResponseRequest } from '../../types';
 import SearchableDropdown from '../SearchableDropdown';
 
@@ -48,7 +48,8 @@ export default function ResponseGenerator({ clients, prompts, onGenerate, isGene
                 value="email"
                 checked={request.responseType === 'email'}
                 onChange={(e) => setRequest(prev => ({ ...prev, responseType: e.target.value as 'email' | 'proposal' }))}
-                className="form-radio text-primary-500 focus:ring-primary-500 bg-gray-700 border-gray-600"
+                className="form-radio text-primary-500 focus:ring-primary-500 bg-gray-700 border-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                tabIndex={0}
               />
               <span className="ml-2 text-gray-300">Email</span>
             </label>
@@ -58,7 +59,8 @@ export default function ResponseGenerator({ clients, prompts, onGenerate, isGene
                 value="proposal"
                 checked={request.responseType === 'proposal'}
                 onChange={(e) => setRequest(prev => ({ ...prev, responseType: e.target.value as 'email' | 'proposal' }))}
-                className="form-radio text-primary-500 focus:ring-primary-500 bg-gray-700 border-gray-600"
+                className="form-radio text-primary-500 focus:ring-primary-500 bg-gray-700 border-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                tabIndex={0}
               />
               <span className="ml-2 text-gray-300">Proposal</span>
             </label>
@@ -67,7 +69,7 @@ export default function ResponseGenerator({ clients, prompts, onGenerate, isGene
 
         <div>
           <label htmlFor="client" className="block text-sm font-medium text-gray-300">
-            Select Client
+            Client
           </label>
           <SearchableDropdown
             options={clients.map(client => ({
@@ -77,6 +79,7 @@ export default function ResponseGenerator({ clients, prompts, onGenerate, isGene
             value={request.clientId}
             onChange={(value) => setRequest(prev => ({ ...prev, clientId: value }))}
             placeholder="Select a client..."
+            tabIndex={0}
           />
         </div>
 
@@ -84,22 +87,38 @@ export default function ResponseGenerator({ clients, prompts, onGenerate, isGene
           <label htmlFor="category" className="block text-sm font-medium text-gray-300">
             Category
           </label>
-          <select
-            id="category"
-            value={request.category}
-            onChange={(e) => setRequest(prev => ({ ...prev, category: e.target.value as AIResponseRequest['category'] }))}
-            className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-gray-100 focus:border-primary-500 focus:ring-primary-500"
-          >
-            <option value="general-advice">General Advice</option>
-            <option value="investment-update">Investment Update</option>
-            <option value="tax-planning">Tax Planning</option>
-            <option value="onboarding">Onboarding</option>
-          </select>
+          <div className="relative">
+            <div 
+              className="flex items-center justify-between w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md cursor-pointer text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              tabIndex={0}
+              role="combobox"
+              aria-expanded="false"
+              aria-controls="category-options"
+              aria-label="Select category"
+            >
+              <span className="text-gray-100">
+                {request.category.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+              </span>
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            </div>
+            <select
+              id="category"
+              value={request.category}
+              onChange={(e) => setRequest(prev => ({ ...prev, category: e.target.value as AIResponseRequest['category'] }))}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              tabIndex={-1}
+            >
+              <option value="general-advice">General Advice</option>
+              <option value="investment-update">Investment Update</option>
+              <option value="tax-planning">Tax Planning</option>
+              <option value="onboarding">Onboarding</option>
+            </select>
+          </div>
         </div>
 
         <div>
           <label htmlFor="predefinedPrompt" className="block text-sm font-medium text-gray-300">
-            Select Prompt
+            Prompt
           </label>
           <SearchableDropdown
             options={prompts
@@ -111,6 +130,7 @@ export default function ResponseGenerator({ clients, prompts, onGenerate, isGene
             value={selectedPromptId}
             onChange={handlePromptSelect}
             placeholder="Select a prompt..."
+            tabIndex={0}
           />
         </div>
 
@@ -123,15 +143,17 @@ export default function ResponseGenerator({ clients, prompts, onGenerate, isGene
             rows={4}
             value={request.context}
             onChange={(e) => setRequest(prev => ({ ...prev, context: e.target.value }))}
-            className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-gray-100 focus:border-primary-500 focus:ring-primary-500"
+            className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             placeholder="Enter additional context about the client's situation..."
+            tabIndex={0}
           />
         </div>
 
         <button
           onClick={() => onGenerate(request)}
           disabled={isGenerating || !request.clientId || !request.prompt || !request.context}
-          className="flex items-center justify-center w-full px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:bg-primary-800 disabled:cursor-not-allowed"
+          className="flex items-center justify-center w-full px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:bg-primary-800 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-gray-800"
+          tabIndex={0}
         >
           {isGenerating ? (
             'Generating...'

@@ -749,6 +749,49 @@ Additional Context: ${request.context}`;
           {renderContent()}
         </div>
       </DashboardLayout>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-sm mx-4 border border-gray-700">
+            <h3 className="text-lg font-medium text-gray-100 mb-4">Confirm Delete</h3>
+            <p className="text-sm text-gray-300 mb-4">
+              Are you sure you want to delete {selectedClients.size} {selectedClients.size === 1 ? 'client' : 'clients'}? This action cannot be undone.
+            </p>
+            <div className="mb-4">
+              <label htmlFor="confirmDelete" className="block text-sm font-medium text-gray-300 mb-2">
+                Type "confirm" to proceed
+              </label>
+              <input
+                type="text"
+                id="confirmDelete"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                placeholder="Type 'confirm' here"
+              />
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setDeleteConfirmText('');
+                }}
+                className="px-4 py-2 bg-gray-700 text-gray-300 rounded-md hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={isDeleting || deleteConfirmText !== 'confirm'}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-red-800 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardErrorBoundary>
   );
 }
