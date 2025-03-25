@@ -419,9 +419,18 @@ export default function ClientDashboard() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex items-center text-gray-300">
-                  <Mail className="w-5 h-5 mr-2 text-gray-400" />
-                  {client.email}
+                <div className="flex items-center text-gray-300 group relative">
+                  <a
+                    href={`mailto:${client.email}`}
+                    className="p-1 -m-1 hover:text-gray-100 transition-colors duration-200"
+                    title={`Send an email to ${client.name}`}
+                  >
+                    <Mail className="w-5 h-5 text-gray-400 hover:text-gray-300" />
+                    <span className="absolute left-8 top-1/2 -translate-y-1/2 px-2 py-1 bg-gray-700 text-sm rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap">
+                      Send an email to {client.name}
+                    </span>
+                  </a>
+                  <span className="ml-2">{client.email}</span>
                 </div>
                 {client.phone && (
                   <div className="flex items-center text-gray-300">

@@ -5,6 +5,7 @@ import { Upload, Plus, Pencil, Trash2, Check, X } from 'lucide-react';
 import { generateAIResponse } from '../lib/openai';
 import type { AIResponseRequest, AIResponse, Client, PredefinedPrompt } from '../types';
 import { supabase } from '../lib/supabase';
+import AnalyzeEmail from './analyze/AnalyzeEmail';
 
 // Layout Components
 import DashboardLayout from './layout/DashboardLayout';
@@ -80,8 +81,8 @@ export default function Dashboard({ user }: { user: any }) {
   }, [user, navigate]);
 
   // State Management
-  const [selectedTab, setSelectedTab] = useState<'responses' | 'clients' | 'emails' | 'prompts' | 'proposals'>(
-    (location.state as { selectedTab?: 'responses' | 'clients' | 'emails' | 'prompts' | 'proposals' })?.selectedTab || 'responses'
+  const [selectedTab, setSelectedTab] = useState<'responses' | 'clients' | 'emails' | 'prompts' | 'proposals' | 'analyse'>(
+    (location.state as { selectedTab?: 'responses' | 'clients' | 'emails' | 'prompts' | 'proposals' | 'analyse' })?.selectedTab || 'responses'
   );
   const [isGenerating, setIsGenerating] = useState(false);
   const [responses, setResponses] = useState<AIResponse[]>([]);
@@ -355,6 +356,17 @@ Additional Context: ${request.context}`;
     switch (selectedTab) {
       case 'emails':
         return <EmailList />;
+      
+      case 'analyse':
+        return (
+          <div className="space-y-6">
+            <AnalyzeEmail onProceedToResponse={(analysis) => {
+              // Handle the analysis result
+              console.log('Analysis completed:', analysis);
+              setSelectedTab('responses');
+            }} />
+          </div>
+        );
       
       case 'prompts':
         return (

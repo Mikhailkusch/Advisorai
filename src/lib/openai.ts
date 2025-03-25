@@ -1,92 +1,89 @@
-// Types for email categorization
-type EmailCategory = 
-  | 'tax-planning'
-  | 'risk-planning'
-  | 'estate-planning'
-  | 'offshore-investment'
-  | 'retirement-planning'
-  | 'investment-planning'
-  | 'general-enquiry';
-
-interface ClientData {
-  name: string;
-  email: string;
-  portfolioValue: number;
-  riskProfile: string;
-  status: string;
-  lastContact: Date;
+// Types for email analysis
+interface EmailAnalysis {
+  email_summary: string;
+  sender_details: {
+    name: string | null;
+    email: string | null;
+    relationship: 'Client' | 'Prospect' | 'Institution' | 'Internal' | 'Other';
+  };
+  email_intent: {
+    category: 'Inquiry' | 'Investment Consultation' | 'Tax Planning' | 'Portfolio Review' | 'Compliance' | 'Administrative Request' | 'Other';
+    urgency: 'Low' | 'Medium' | 'High';
+    action_required: boolean;
+  };
+  key_topics: string[];
+  specific_questions: string[];
+  attached_documents: {
+    present: boolean;
+    types: string[];
+  };
+  recommended_response: {
+    summary: string;
+    requires_manual_review: boolean;
+    escalation_needed: boolean;
+    assigned_department: 'Advisory' | 'Compliance' | 'Client Services' | 'Other';
+  };
 }
 
 interface AIResponse {
   summary: string;
   emailResponse: string;
-  category: EmailCategory;
+  category: string;
   missingInfo: string[];
 }
 
-// Function to analyze email content and determine category
-async function analyzeEmailContent(emailContent: string): Promise<EmailCategory> {
+/**
+ * Analyzes an email and extracts key details relevant to financial advisory services
+ * @param emailContent The content of the email to analyze
+ * @returns Promise<EmailAnalysis> Structured analysis of the email
+ */
+export async function analyzeEmail(emailContent: string): Promise<EmailAnalysis> {
   try {
-    const response = await fetch('http://localhost:3000/api/analyze-email', {
+    console.log('analyzeEmail function called with content:', emailContent);
+    console.log('Environment variables:', {
+      VITE_API_URL: import.meta.env.VITE_API_URL,
+      NODE_ENV: import.meta.env.MODE
+    });
+
+    const url = `${import.meta.env.VITE_API_URL}/api/analyze-email`;
+    console.log('Making request to:', url);
+    console.log('Request payload:', { emailContent });
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        emailContent,
-        categories: [
-          'tax-planning',
-          'risk-planning',
-          'estate-planning',
-          'offshore-investment',
-          'retirement-planning',
-          'investment-planning',
-          'general-enquiry'
-        ]
+        emailContent
       })
     });
 
+    console.log('Response status:', response.status);
+    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
     if (!response.ok) {
-      throw new Error('Failed to analyze email content');
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`Failed to analyze email: ${response.status} - ${errorText}`);
     }
 
-    const result = await response.json();
-    return result.category as EmailCategory;
+    const analysis = await response.json();
+    console.log('Parsed analysis:', analysis);
+    return analysis as EmailAnalysis;
   } catch (error) {
     console.error('Error analyzing email:', error);
-    return 'general-enquiry'; // Default category if analysis fails
-  }
-}
-
-// Function to find appropriate prompt based on category
-async function findAppropriatePrompt(category: EmailCategory): Promise<string> {
-  try {
-    const response = await fetch('http://localhost:3000/api/prompts', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch prompts');
-    }
-
-    const prompts = await response.json();
-    const matchingPrompt = prompts.find((p: any) => p.category === category);
-    
-    if (!matchingPrompt) {
-      throw new Error(`No prompt found for category: ${category}`);
-    }
-
-    return matchingPrompt.prompt;
-  } catch (error) {
-    console.error('Error finding prompt:', error);
     throw error;
   }
 }
 
-// Main function to generate AI response
+/**
+ * Generates an AI response based on the provided prompt and context
+ * @param prompt The prompt to generate a response for
+ * @param clientContext Additional context for the response
+ * @param responseType The type of response to generate
+ * @returns Promise<AIResponse> The generated response
+ */
 export async function generateAIResponse(
   prompt: string,
   clientContext: string,
@@ -95,7 +92,6 @@ export async function generateAIResponse(
   try {
     console.log('🤖 Starting AI response generation...');
 
-    // Generate response using the prompt and client context
     const response = await fetch(`${import.meta.env.VITE_API_URL}/api/generate`, {
       method: 'POST',
       headers: {
@@ -121,49 +117,4 @@ export async function generateAIResponse(
     console.error('❌ Error generating AI response:', error);
     throw error;
   }
-}
-
-// Function to generate client summary
-export async function generateClientSummary(
-  client: any,
-  notes: any[],
-  responses: any[],
-  tasks: any[]
-): Promise<string> {
-  const clientData = {
-    profile: {
-      name: `${client.name} ${client.surname || ''}`.trim(),
-      email: client.email,
-      phone: client.phone,
-      occupation: client.occupation,
-      portfolioValue: client.portfolioValue,
-      riskProfile: client.riskProfile,
-      riskTolerance: client.riskTolerance,
-      annualIncome: client.annualIncome,
-      investmentGoals: client.investmentGoals,
-      status: client.status,
-      lastContact: client.lastContact,
-    },
-    notes: notes.map(note => ({
-      content: note.content,
-      date: note.created_at
-    })),
-    responses: responses.map(response => ({
-      summary: response.summary,
-      category: response.category,
-      status: response.status,
-      date: response.created_at
-    })),
-    tasks: tasks.map(task => ({
-      title: task.title,
-      status: task.status,
-      dueDate: task.due_date
-    }))
-  };
-
-  return generateAIResponse(
-    'Generate a comprehensive client summary',
-    JSON.stringify(clientData, null, 2),
-    clientData.profile
-  ).then(response => response.emailResponse);
 }

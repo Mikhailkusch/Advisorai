@@ -1,14 +1,24 @@
 import React from 'react';
 
 interface TabNavigationProps {
-  selectedTab: 'responses' | 'clients' | 'emails' | 'prompts' | 'proposals';
-  onTabChange: (tab: 'responses' | 'clients' | 'emails' | 'prompts' | 'proposals') => void;
+  selectedTab: 'responses' | 'clients' | 'emails' | 'prompts' | 'proposals' | 'analyse';
+  onTabChange: (tab: 'responses' | 'clients' | 'emails' | 'prompts' | 'proposals' | 'analyse') => void;
 }
 
 export default function TabNavigation({ selectedTab, onTabChange }: TabNavigationProps) {
   return (
     <div className="border-b border-gray-700 mb-6">
       <nav className="-mb-px flex space-x-8">
+        <button
+          onClick={() => onTabChange('analyse')}
+          className={`${
+            selectedTab === 'analyse'
+              ? 'border-primary-500 text-primary-400'
+              : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
+          } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+        >
+          Analyse
+        </button>
         <button
           onClick={() => onTabChange('responses')}
           className={`${

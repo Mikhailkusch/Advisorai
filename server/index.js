@@ -10,6 +10,9 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
+import { getEmailResponsePrompt, getProposalPrompt } from './prompts/aiResponsePrompt.js';
+import { getClientSummaryPrompt } from './prompts/clientSummaryPrompt.js';
+import { getEmailAnalysisPrompt } from './prompts/emailAnalysisPrompt.js';
 
 // Load environment variables
 dotenv.config();
@@ -60,6 +63,17 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
+
+// Add CORS logging middleware
+app.use((req, res, next) => {
+  console.log('Request received:', {
+    method: req.method,
+    path: req.path,
+    origin: req.headers.origin,
+    headers: req.headers
+  });
+  next();
+});
 
 // Parse JSON bodies
 app.use(express.json());
@@ -347,68 +361,8 @@ app.post('/api/generate', async (req, res) => {
     // Create structured client data JSON
     const structuredClientData = JSON.stringify(clientData, null, 2);
 
-    // Construct the system prompt based on response type
-    const systemPrompt = responseType === 'email' 
-      ? `You are a professional financial advisor assistant. Provide clear, compliant financial advice while maintaining a professional tone.
-
-IMPORTANT: Your response MUST follow this EXACT format, with each section starting on a new line:
-
-Summary:
-[Write a brief 2-3 sentence summary of the key points]
-
-Email Response:
-[Write your detailed email response here]
-
-Category:
-[Choose exactly one: investment-update, tax-planning, general-advice, or onboarding]
-
-Missing Information:
-[If any information is missing, list it here, one item per line]
-
-Example format:
-Summary:
-This response addresses the client's questions about tax planning for their investment portfolio.
-
-Email Response:
-Dear [Client Name],
-
-Thank you for your inquiry about tax planning...
-
-Category:
-tax-planning
-
-Missing Information:
-- Current tax bracket
-- Specific investment holdings`
-      : `You are a professional financial advisor assistant. Create detailed investment proposals while maintaining a professional tone.
-
-IMPORTANT: Your response MUST follow this EXACT format, with each section starting on a new line:
-
-Summary:
-[Write a brief 2-3 sentence executive summary]
-
-Proposal:
-[Write your detailed proposal here]
-
-Category:
-[Choose exactly one: investment-update, tax-planning, general-advice, or onboarding]
-
-Missing Information:
-[If any information is missing, list it here, one item per line]
-
-Example format:
-Summary:
-This proposal outlines a comprehensive investment strategy for the client's retirement portfolio.
-
-Proposal:
-Based on your current financial situation...
-
-Category:
-investment-update
-
-Missing Information:
-- Current investment portfolio details
-- Retirement timeline`;
+    // Get the appropriate system prompt based on response type
+    const systemPrompt = responseType === 'email' ? getEmailResponsePrompt() : getProposalPrompt();
 
     // Construct the complete prompt
     const completePrompt = `
@@ -423,7 +377,13 @@ ${clientData.additionalContext || ''}
 
 Please provide a ${responseType === 'email' ? 'professional email response' : 'detailed investment proposal'} based on the above information.`;
 
-    console.log('Sending request to OpenAI with prompt:', completePrompt);
+    console.log('Complete GPT Request:', {
+      systemPrompt,
+      userPrompt: completePrompt,
+      model: 'gpt-3.5-turbo',
+      temperature: 0.7,
+      maxTokens: 4000
+    });
 
     const completion = await openai.chat.completions.create({
       messages: [
@@ -436,7 +396,7 @@ Please provide a ${responseType === 'email' ? 'professional email response' : 'd
           content: completePrompt
         }
       ],
-      model: 'gpt-4-turbo-preview',
+      model: 'gpt-3.5-turbo',
       temperature: 0.7,
       max_tokens: 4000
     });
@@ -524,37 +484,7 @@ app.post('/api/generate-summary', async (req, res) => {
     const sanitizedResponses = Array.isArray(responses) ? responses.slice(0, 5) : [];
     const sanitizedTasks = Array.isArray(tasks) ? tasks.slice(0, 5) : [];
 
-    const systemPrompt = `You are a professional financial advisor assistant creating a comprehensive client summary. Follow these guidelines:
-
-1. Information Weighting:
-   - Notes and recent communications (context) carry the highest weight
-   - Dynamic information (recent portfolio changes, life events) is more relevant than static data
-   - Historical context should inform but not dominate the summary
-
-2. Use the following Markdown formatting:
-   - Use # for main sections (e.g., # Financial Overview)
-   - Use ## for subsections (e.g., ## Investment Strategy)
-   - Use ** for important highlights (e.g., **High Risk Tolerance**)
-   - Use - for bullet points in lists
-   - Use > for important quotes or notes
-
-3. Structure the summary with these sections:
-   # Client Overview
-   (Key personal and financial information)
-   
-   ## Current Financial Situation
-   (Portfolio value, investment holdings, risk profile)
-   
-   ## Family & Lifestyle
-   (Age, marital status, children, lifestyle factors affecting financial planning)
-   
-   ## Recent Developments
-   (Latest notes, communications, and significant changes)
-   
-   ## Action Items & Recommendations
-   (Based on recent communications and notes)
-
-4. Highlight any red flags or immediate action items that require attention.`;
+    const systemPrompt = getClientSummaryPrompt();
 
     const clientData = {
       profile: {
@@ -637,18 +567,19 @@ app.post('/api/generate-summary', async (req, res) => {
 // Email Analysis endpoint
 app.post('/api/analyze-email', async (req, res) => {
   try {
-    const { emailContent, categories } = req.body;
+    console.log('Received email analysis request:', {
+      body: req.body,
+      headers: req.headers
+    });
 
-    if (!emailContent || !categories) {
-      return res.status(400).json({ error: 'Missing required parameters' });
+    const { emailContent } = req.body;
+
+    if (!emailContent) {
+      console.log('Missing email content');
+      return res.status(400).json({ error: 'Missing email content' });
     }
 
-    const systemPrompt = `You are an expert financial advisor assistant. Analyze the following email content and categorize it into one of the provided categories. Choose the most appropriate category based on the main topic and intent of the email.
-
-Available categories:
-${categories.map(cat => `- ${cat.replace(/-/g, ' ')}`).join('\n')}
-
-Respond with ONLY the category name, nothing else.`;
+    const systemPrompt = getEmailAnalysisPrompt();
 
     const completion = await openai.chat.completions.create({
       messages: [
@@ -663,16 +594,21 @@ Respond with ONLY the category name, nothing else.`;
       ],
       model: 'gpt-3.5-turbo',
       temperature: 0.3,
-      max_tokens: 50
+      max_tokens: 1000
     });
 
-    const category = completion.choices[0]?.message?.content?.trim().toLowerCase();
-    
-    if (!category || !categories.includes(category)) {
-      return res.status(500).json({ error: 'Failed to determine valid category' });
+    const response = completion.choices[0]?.message?.content;
+    if (!response) {
+      return res.status(500).json({ error: 'No analysis generated' });
     }
 
-    res.json({ category });
+    try {
+      const analysis = JSON.parse(response);
+      res.json(analysis);
+    } catch (parseError) {
+      console.error('Error parsing OpenAI response:', parseError);
+      res.status(500).json({ error: 'Failed to parse analysis response' });
+    }
   } catch (error) {
     console.error('Error analyzing email:', error);
     res.status(500).json({ error: 'Failed to analyze email content' });
