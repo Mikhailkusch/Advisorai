@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, LogOut, User } from 'lucide-react';
 import { signOut } from '../lib/auth';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 interface UserMenuProps {
   user: any;
@@ -11,6 +11,7 @@ export default function UserMenu({ user }: UserMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -35,8 +36,11 @@ export default function UserMenu({ user }: UserMenuProps) {
 
   const handleProfile = () => {
     setIsOpen(false);
-    // Navigate to profile page (you can update this route as needed)
-    navigate('/profile');
+    navigate('/profile', { 
+      state: { 
+        previousTab: (location.state as any)?.selectedTab || 'responses'
+      } 
+    });
   };
 
   return (

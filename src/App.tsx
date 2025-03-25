@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Dashboard from './components/Dashboard';
 import ClientDashboard from './components/ClientDashboard';
 import AuthModal from './components/AuthModal';
+import Profile from './components/Profile';
 import { getCurrentUser } from './lib/auth';
 import { Zap } from 'lucide-react';
 
@@ -73,11 +74,61 @@ function App() {
 
   return (
     <Router>
-      <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<Dashboard user={user} />} />
-        <Route path="/clients/:id" element={<ClientDashboard />} />
-      </Routes>
+      <div className="min-h-screen bg-gray-900">
+        <Routes>
+          <Route
+            path="/"
+            element={
+              user ? (
+                <Navigate to="/dashboard" replace />
+              ) : (
+                <div className="min-h-screen flex flex-col items-center justify-center px-4">
+                  <div className="max-w-md w-full space-y-8">
+                    <div className="text-center">
+                      <Zap className="mx-auto h-12 w-12 text-primary-500" />
+                      <h2 className="mt-6 text-3xl font-extrabold text-gray-100">
+                        Welcome to AdvisorAI
+                      </h2>
+                      <p className="mt-2 text-sm text-gray-400">
+                        Your AI-powered financial advisory assistant
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowAuthModal(true)}
+                      className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                    >
+                      Sign In
+                    </button>
+                  </div>
+                </div>
+              )
+            }
+          />
+          <Route
+            path="/dashboard/*"
+            element={user ? <Dashboard user={user} /> : <Navigate to="/" replace />}
+          />
+          <Route
+            path="/clients/:id"
+            element={user ? <ClientDashboard /> : <Navigate to="/" replace />}
+          />
+          <Route
+            path="/profile"
+            element={user ? <Profile user={user} /> : <Navigate to="/" replace />}
+          />
+        </Routes>
+
+        {showAuthModal && (
+          <AuthModal
+            onClose={() => setShowAuthModal(false)}
+            onSuccess={(user) => {
+              setUser(user);
+              setShowAuthModal(false);
+            }}
+            error={authError}
+          />
+        )}
+      </div>
     </Router>
   );
 }
