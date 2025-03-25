@@ -65,6 +65,7 @@ export default function AnalyzeEmail({ onProceedToResponse }: AnalyzeEmailProps)
         specific_questions: analysis.specific_questions,
         attached_documents: analysis.attached_documents,
         recommended_response: analysis.recommended_response,
+        raw_email: context,
         created_at: new Date().toISOString()
       }]);
 
