@@ -13,21 +13,52 @@ import OpenAI from 'openai';
 import { getEmailResponsePrompt, getProposalPrompt } from './prompts/aiResponsePrompt.js';
 import { getClientSummaryPrompt } from './prompts/clientSummaryPrompt.js';
 import { getEmailAnalysisPrompt } from './prompts/emailAnalysisPrompt.js';
+import promptsRouter from './routes/prompts.js';
 
 // Load environment variables
 dotenv.config();
+
+// Validate required environment variables
+const requiredEnvVars = [
+  'VITE_SUPABASE_URL',
+  'VITE_SUPABASE_ANON_KEY',
+  'OPENAI_API_KEY'
+];
+
+for (const envVar of requiredEnvVars) {
+  if (!process.env[envVar]) {
+    console.error(`Missing required environment variable: ${envVar}`);
+    process.exit(1);
+  }
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 // Initialize Supabase client
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
-  process.env.VITE_SUPABASE_ANON_KEY
+  process.env.VITE_SUPABASE_ANON_KEY,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+      storage: {
+        getItem: () => null,
+        setItem: () => {},
+        removeItem: () => {}
+      },
+      flowType: 'pkce'
+    }
+  }
 );
+
+// Store Supabase client in app.locals for use in routes
+app.locals.supabase = supabase;
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -75,6 +106,63 @@ app.use((req, res, next) => {
   next();
 });
 
+// Supabase JWT verification middleware
+app.use(async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      console.error('No authorization header found');
+      return res.status(401).json({ error: 'No authorization header' });
+    }
+
+    const token = authHeader.replace('Bearer ', '').trim();
+    if (!token) {
+      console.error('Invalid token format');
+      return res.status(401).json({ error: 'Invalid token format' });
+    }
+
+    // Validate token format
+    const tokenParts = token.split('.');
+    if (tokenParts.length !== 3) {
+      console.error('Invalid token structure:', tokenParts.length, 'parts');
+      return res.status(401).json({ 
+        error: 'Invalid token structure',
+        details: 'Token must have 3 parts'
+      });
+    }
+
+    console.log('Verifying token...');
+    
+    // Verify the token using Supabase's getUser method
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+
+    if (error) {
+      console.error('Auth error:', error);
+      return res.status(401).json({ 
+        error: 'Invalid token',
+        details: error.message
+      });
+    }
+
+    if (!user) {
+      console.error('No user found for token');
+      return res.status(401).json({ error: 'No user found' });
+    }
+
+    console.log('Token verified successfully for user:', user.email);
+    
+    // Add user to request object for use in routes
+    req.user = user;
+    next();
+  } catch (error) {
+    console.error('Auth middleware error:', error);
+    return res.status(401).json({ 
+      error: 'Authentication failed',
+      details: error.message
+    });
+  }
+});
+
 // Parse JSON bodies
 app.use(express.json());
 
@@ -108,6 +196,9 @@ app.use(session({
     maxAge: 24 * 60 * 60 * 1000
   }
 }));
+
+// Use the prompts router
+app.use('/api/prompts', promptsRouter);
 
 // Store tokens in memory (use a proper database in production)
 const tokenStore = new Map();
@@ -615,6 +706,59 @@ app.post('/api/analyze-email', async (req, res) => {
   }
 });
 
+// Analysis Response endpoint
+app.post('/api/analyze-response', async (req, res) => {
+  try {
+    console.log('Received analysis response request:', {
+      body: req.body,
+      headers: req.headers
+    });
+
+    const { populatedPrompt } = req.body;
+
+    if (!populatedPrompt) {
+      console.log('Missing populated prompt');
+      return res.status(400).json({ error: 'Missing populated prompt' });
+    }
+
+    console.log('Sending to OpenAI:', {
+      model: 'gpt-4',
+      temperature: 0.7,
+      maxTokens: 4000,
+      prompt: populatedPrompt
+    });
+
+    const completion = await openai.chat.completions.create({
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a professional financial advisor assistant. Provide clear, compliant financial advice while maintaining a professional tone.'
+        },
+        {
+          role: 'user',
+          content: populatedPrompt
+        }
+      ],
+      model: 'gpt-4',
+      temperature: 0.7,
+      max_tokens: 4000
+    });
+
+    const response = completion.choices[0]?.message?.content;
+    if (!response) {
+      console.error('No response generated from OpenAI');
+      return res.status(500).json({ error: 'No response generated from OpenAI' });
+    }
+
+    console.log('OpenAI Response:', response);
+
+    res.json({ response });
+  } catch (error) {
+    console.error('Error generating analysis response:', error);
+    res.status(500).json({ error: 'Failed to generate analysis response' });
+  }
+});
+
 // Prompts endpoint
 app.get('/api/prompts', async (req, res) => {
   try {
@@ -629,6 +773,9 @@ app.get('/api/prompts', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch prompts' });
   }
 });
+
+// Routes
+app.use('/api/prompts', promptsRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

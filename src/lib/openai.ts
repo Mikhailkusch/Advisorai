@@ -1,3 +1,5 @@
+import { supabase } from './supabase';
+
 // Types for email analysis
 interface EmailAnalysis {
   email_summary: string;
@@ -45,6 +47,11 @@ export async function analyzeEmail(emailContent: string): Promise<EmailAnalysis>
       NODE_ENV: import.meta.env.MODE
     });
 
+    // Get the current session
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    if (!session) throw new Error('No active session');
+
     const url = `${import.meta.env.VITE_API_URL}/api/analyze-email`;
     console.log('Making request to:', url);
     console.log('Request payload:', { emailContent });
@@ -53,6 +60,7 @@ export async function analyzeEmail(emailContent: string): Promise<EmailAnalysis>
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`
       },
       body: JSON.stringify({
         emailContent

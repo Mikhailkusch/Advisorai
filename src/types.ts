@@ -82,27 +82,26 @@ export interface ClientDocument {
 }
 
 export interface EmailAnalysis {
+  id: string;
+  client_id: string;
+  created_at: string;
+  raw_email: string;
   email_summary: string;
   sender_details: {
     name: string | null;
     email: string | null;
-    relationship: 'Client' | 'Prospect' | 'Institution' | 'Internal' | 'Other';
   };
   email_intent: {
-    category: 'Inquiry' | 'Investment Consultation' | 'Tax Planning' | 'Portfolio Review' | 'Compliance' | 'Administrative Request' | 'Other';
-    urgency: 'Low' | 'Medium' | 'High';
+    category: string;
+    urgency: 'High' | 'Medium' | 'Low';
     action_required: boolean;
   };
   key_topics: string[];
   specific_questions: string[];
-  attached_documents: {
-    present: boolean;
-    types: string[];
-  };
+  attached_documents: string[];
   recommended_response: {
-    summary: string;
-    requires_manual_review: boolean;
-    escalation_needed: boolean;
-    assigned_department: 'Advisory' | 'Compliance' | 'Client Services' | 'Other';
+    tone: string;
+    key_points: string[];
+    suggested_actions: string[];
   };
 }

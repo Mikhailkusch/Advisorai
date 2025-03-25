@@ -2,12 +2,18 @@ import React, { useState } from 'react';
 import type { EmailAnalysis, Client } from '../../types';
 import { analyzeEmail } from '../../lib/openai';
 import { supabase } from '../../lib/supabase';
+import { getPopulatedAnalysisResponsePrompt } from '../../lib/promptHelpers';
 
 interface AnalyzeEmailProps {
-  onProceedToResponse: (analysis: EmailAnalysis) => void;
+  onProceedToResponse: (analysis: EmailAnalysis, prompt: string) => void;
+  advisorData: {
+    first_name: string;
+    last_name: string;
+    company: string;
+  };
 }
 
-export default function AnalyzeEmail({ onProceedToResponse }: AnalyzeEmailProps) {
+export default function AnalyzeEmail({ onProceedToResponse, advisorData }: AnalyzeEmailProps) {
   const [context, setContext] = useState('');
   const [analysis, setAnalysis] = useState<EmailAnalysis | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -54,7 +60,7 @@ export default function AnalyzeEmail({ onProceedToResponse }: AnalyzeEmailProps)
   };
 
   const storeAnalysis = async (analysis: EmailAnalysis, clientId: string) => {
-    const { error: analysisError } = await supabase
+    const { data: insertedAnalysis, error: analysisError } = await supabase
       .from('email_analyses')
       .insert([{
         client_id: clientId,
@@ -67,9 +73,12 @@ export default function AnalyzeEmail({ onProceedToResponse }: AnalyzeEmailProps)
         recommended_response: analysis.recommended_response,
         raw_email: context,
         created_at: new Date().toISOString()
-      }]);
+      }])
+      .select()
+      .single();
 
     if (analysisError) throw analysisError;
+    return insertedAnalysis;
   };
 
   const handleClick = async (e: React.MouseEvent) => {
@@ -94,13 +103,54 @@ export default function AnalyzeEmail({ onProceedToResponse }: AnalyzeEmailProps)
       );
 
       if (client) {
-        // Store the analysis in the database
-        await storeAnalysis(result, client.id);
+        // Store the analysis in the database and get the inserted record
+        const storedAnalysis = await storeAnalysis(result, client.id);
+        setAnalysis(storedAnalysis); // Update the analysis state with the stored record that has an ID
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to analyze email');
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const handleProceedToResponse = async (analysis: EmailAnalysis) => {
+    try {
+      const populatedPrompt = await getPopulatedAnalysisResponsePrompt(
+        analysis.id,
+        advisorData
+      );
+
+      console.log('Populated prompt:', populatedPrompt);
+
+      // Get the current session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      if (!session) throw new Error('No active session');
+
+      // Send the populated prompt to the analysis response endpoint
+      const response = await fetch('http://localhost:3000/api/analyze-response', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          populatedPrompt
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to generate analysis response');
+      }
+
+      const { response: aiResponse } = await response.json();
+      console.log('AI Response:', aiResponse);
+
+      onProceedToResponse(analysis, aiResponse);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to prepare response prompt');
     }
   };
 
@@ -152,7 +202,7 @@ export default function AnalyzeEmail({ onProceedToResponse }: AnalyzeEmailProps)
             </div>
             <button
               type="button"
-              onClick={() => onProceedToResponse(analysis)}
+              onClick={() => handleProceedToResponse(analysis)}
               className="mt-4 w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
             >
               Proceed to Response Generation
