@@ -4,14 +4,14 @@ import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import type { AIResponse, Client } from '../types';
 
-interface ProposalCardProps {
+interface ResponseCardProps {
   response: AIResponse;
   client: Client | undefined;
   onEdit: (response: AIResponse) => void;
   onViewClient: (clientId: string) => void;
 }
 
-export default function ProposalCard({ response, client, onEdit, onViewClient }: ProposalCardProps) {
+export default function ResponseCard({ response, client, onEdit, onViewClient }: ResponseCardProps) {
   const navigate = useNavigate();
 
   const handleViewClient = () => {
@@ -70,9 +70,9 @@ export default function ProposalCard({ response, client, onEdit, onViewClient }:
           className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 flex items-center space-x-2"
         >
           <Edit2 className="w-4 h-4" />
-          <span>Edit Proposal</span>
+          <span>Edit Response</span>
         </button>
       </div>
     </div>
   );
-}
+} 

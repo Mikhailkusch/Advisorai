@@ -5,6 +5,8 @@ import { Upload, Plus, Pencil, Trash2, Check, X } from 'lucide-react';
 import { generateAIResponse } from '../lib/openai';
 import type { AIResponseRequest, AIResponse, Client, PredefinedPrompt } from '../types';
 import { supabase } from '../lib/supabase';
+import AnalyzeEmail from './analyze/AnalyzeEmail';
+import { getCurrentUser, ensureValidSession } from '../lib/auth';
 
 // Layout Components
 import DashboardLayout from './layout/DashboardLayout';
@@ -21,6 +23,7 @@ import EmailList from './EmailList';
 import ImportClientsModal from './ImportClientsModal';
 import ResponseGenerator from './responses/ResponseGenerator';
 import ProposalCard from './ProposalCard';
+import ResponseCard from './ResponseCard';
 
 // Error Boundary Component
 class DashboardErrorBoundary extends React.Component<
@@ -80,9 +83,7 @@ export default function Dashboard({ user }: { user: any }) {
   }, [user, navigate]);
 
   // State Management
-  const [selectedTab, setSelectedTab] = useState<'responses' | 'clients' | 'emails' | 'prompts' | 'proposals'>(
-    (location.state as { selectedTab?: 'responses' | 'clients' | 'emails' | 'prompts' | 'proposals' })?.selectedTab || 'responses'
-  );
+  const [selectedTab, setSelectedTab] = useState<'responses' | 'clients' | 'emails' | 'prompts' | 'proposals' | 'analyse'>((location.state as { selectedTab?: 'responses' | 'clients' | 'emails' | 'prompts' | 'proposals' | 'analyse' })?.selectedTab || 'responses');
   const [isGenerating, setIsGenerating] = useState(false);
   const [responses, setResponses] = useState<AIResponse[]>([]);
   const [showAddClientModal, setShowAddClientModal] = useState(false);
@@ -104,6 +105,13 @@ export default function Dashboard({ user }: { user: any }) {
   const [filteredClients, setFilteredClients] = useState<Client[]>([]);
   const [filteredPrompts, setFilteredPrompts] = useState<PredefinedPrompt[]>([]);
   const [filteredResponses, setFilteredResponses] = useState<AIResponse[]>([]);
+
+  // Add advisorData state
+  const [advisorData, setAdvisorData] = useState({
+    first_name: user?.user_metadata?.first_name || '',
+    last_name: user?.user_metadata?.last_name || '',
+    company: user?.user_metadata?.company || ''
+  });
 
   // Data Fetching
   useEffect(() => {
@@ -132,67 +140,95 @@ export default function Dashboard({ user }: { user: any }) {
 
   // Data Fetching Functions
   const fetchClients = async () => {
-    const { data, error } = await supabase
-      .from('clients')
-      .select('*')
-      .order('name');
+    try {
+      await ensureValidSession();
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*')
+        .order('name');
 
-    if (error) throw error;
+      if (error) throw error;
 
-    if (data) {
-      setClients(data.map(client => ({
-        id: client.id,
-        name: client.name,
-        email: client.email,
-        lastContact: new Date(client.last_contact),
-        status: client.status,
-        portfolioValue: client.portfolio_value,
-        riskProfile: client.risk_profile,
-      })));
+      if (data) {
+        setClients(data.map(client => ({
+          id: client.id,
+          name: client.name,
+          email: client.email,
+          lastContact: new Date(client.last_contact),
+          status: client.status,
+          portfolioValue: client.portfolio_value,
+          riskProfile: client.risk_profile,
+        })));
+      } else {
+        setClients([]);
+      }
+    } catch (error) {
+      console.error('Error fetching clients:', error);
+      setError('Failed to fetch clients. Please try again.');
+      setClients([]);
     }
   };
 
   const fetchPrompts = async () => {
-    const { data, error } = await supabase
-      .from('prompts')
-      .select('*')
-      .order('created_at', { ascending: false });
+    try {
+      const session = await ensureValidSession();
+      const { data, error } = await supabase
+        .from('prompts')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false });
 
-    if (error) throw error;
+      if (error) throw error;
 
-    if (data) {
-      setPrompts(data.map(prompt => ({
-        id: prompt.id,
-        category: prompt.category,
-        prompt: prompt.prompt,
-        description: prompt.description,
-        responseType: prompt.response_type
-      })));
+      if (data) {
+        setPrompts(data.map(prompt => ({
+          id: prompt.id,
+          category: prompt.category,
+          prompt: prompt.prompt,
+          description: prompt.description,
+          responseType: prompt.response_type
+        })));
+      } else {
+        setPrompts([]);
+      }
+    } catch (error) {
+      console.error('Error fetching prompts:', error);
+      setError('Failed to fetch prompts. Please try again.');
+      setPrompts([]);
     }
   };
 
   const fetchResponses = async () => {
-    const { data, error } = await supabase
-      .from('responses')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .neq('status', 'rejected')
-      .limit(10);
+    try {
+      await ensureValidSession();
+      const { data, error } = await supabase
+        .from('responses')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .neq('status', 'rejected')
+        .limit(10);
 
-    if (error) throw error;
+      if (error) throw error;
 
-    if (data) {
-      setResponses(data.map(response => ({
-        id: response.id,
-        clientId: response.client_id,
-        summary: response.summary,
-        content: response.content,
-        status: response.status,
-        createdAt: new Date(response.created_at),
-        category: response.category,
-        missingInfo: response.missing_info || [],
-        responseType: response.response_type
-      })));
+      if (data) {
+        setResponses(data.map(response => ({
+          id: response.id,
+          clientId: response.client_id,
+          summary: response.summary,
+          content: response.content,
+          status: response.status,
+          createdAt: new Date(response.created_at),
+          category: response.category,
+          missingInfo: response.missing_info || [],
+          responseType: response.response_type
+        })));
+      } else {
+        setResponses([]);
+      }
+    } catch (error) {
+      console.error('Error fetching responses:', error);
+      setError('Failed to fetch responses. Please try again.');
+      setResponses([]);
     }
   };
 
@@ -241,15 +277,17 @@ Additional Context: ${request.context}`;
           status: data.status,
           createdAt: new Date(data.created_at),
           category: data.category,
-          missingInfo: data.missing_info,
+          missingInfo: data.missing_info || [],
           responseType: data.response_type
         };
 
         setResponses(prev => [newResponse, ...prev.slice(0, 9)]);
+      } else {
+        throw new Error('Failed to create response');
       }
     } catch (error) {
       console.error('Error generating response:', error);
-      setError('Failed to generate response. Please try again.');
+      setError(error instanceof Error ? error.message : 'Failed to generate response. Please try again.');
     } finally {
       setIsGenerating(false);
     }
@@ -323,6 +361,15 @@ Additional Context: ${request.context}`;
     setShowImportModal(false);
   };
 
+  const handleResponseUpdated = (updatedResponse: AIResponse) => {
+    setResponses(prev =>
+      prev.map(response =>
+        response.id === updatedResponse.id ? updatedResponse : response
+      )
+    );
+    setEditingResponse(null);
+  };
+
   // Render Functions
   const renderContent = () => {
     if (error) {
@@ -346,6 +393,117 @@ Additional Context: ${request.context}`;
     switch (selectedTab) {
       case 'emails':
         return <EmailList />;
+      
+      case 'analyse':
+        return (
+          <div className="space-y-6">
+            <AnalyzeEmail 
+              onProceedToResponse={async (analysis, aiResponse, clientId) => {
+                try {
+                  if (!clientId) {
+                    throw new Error('Client ID is required to store the response');
+                  }
+
+                  // Map the email intent category to the response category
+                  const categoryMap: Record<string, 'tax-planning' | 'risk-planning' | 'estate-planning' | 'offshore-investment' | 'retirement-planning' | 'investment-planning' | 'general-enquiry'> = {
+                    'Inquiry': 'general-enquiry',
+                    'Investment Consultation': 'investment-planning',
+                    'Tax Planning': 'tax-planning',
+                    'Portfolio Review': 'investment-planning',
+                    'Offshore Investments': 'offshore-investment',
+                    'Proposal': 'investment-planning',
+                    'Compliance': 'general-enquiry',
+                    'Administrative Request': 'general-enquiry',
+                    'Other': 'general-enquiry'
+                  };
+
+                  const category = categoryMap[analysis.email_intent.category] || 'general-enquiry';
+
+                  // Create a new response object
+                  const newResponse: AIResponse = {
+                    id: analysis.id || 'temp-' + Date.now(),
+                    clientId: clientId,
+                    summary: analysis.email_summary || 'Email Response',
+                    content: aiResponse,
+                    status: 'pending',
+                    createdAt: new Date(),
+                    category: category,
+                    missingInfo: analysis.specific_questions || [],
+                    responseType: 'email'
+                  };
+
+                  // Store the response in the database
+                  const { data, error } = await supabase
+                    .from('responses')
+                    .insert([{
+                      client_id: clientId,
+                      summary: analysis.email_summary || 'Email Response',
+                      content: aiResponse,
+                      status: 'pending',
+                      category: category,
+                      missing_info: analysis.specific_questions || [],
+                      response_type: 'email',
+                      created_at: new Date().toISOString()
+                    }])
+                    .select()
+                    .single();
+
+                  if (error) throw error;
+
+                  // Update the responses state with the new response
+                  setResponses(prev => [newResponse, ...prev.slice(0, 9)]);
+                  
+                  // Switch to the responses tab
+                  setSelectedTab('responses');
+                } catch (error) {
+                  console.error('Error storing response:', error);
+                  setError('Failed to store response. Please try again.');
+                }
+              }}
+              advisorData={advisorData}
+            />
+          </div>
+        );
+      
+      case 'responses':
+        return (
+          <>
+            <ResponseGenerator
+              clients={displayedClients}
+              prompts={prompts.filter(p => p.responseType === 'email')}
+              onGenerate={handleGenerateResponse}
+              isGenerating={isGenerating}
+            />
+
+            {displayedResponses.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-400">
+                  {searchQuery ? 'No responses match your search.' : 'No responses found.'}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {displayedResponses
+                  .filter(response => response.responseType === 'email')
+                  .map((response) => {
+                    const client = clients.find((c) => c.id === response.clientId);
+                    return (
+                      <ResponseCard
+                        key={response.id}
+                        response={response}
+                        client={client}
+                        onEdit={setEditingResponse}
+                        onViewClient={(clientId) => {
+                          setSelectedTab('clients');
+                          // Additional logic to scroll to or highlight the client
+                        }}
+                      />
+                    );
+                  })}
+              </div>
+            )}
+          </>
+        );
       
       case 'prompts':
         return (
@@ -399,6 +557,35 @@ Additional Context: ${request.context}`;
                 ))}
               </div>
             )}
+
+            {showAddPromptModal && (
+              <AddPromptModal
+                onClose={() => setShowAddPromptModal(false)}
+                onPromptAdded={(newPrompt) => {
+                  setPrompts(prev => [newPrompt, ...prev]);
+                  setShowAddPromptModal(false);
+                }}
+              />
+            )}
+
+            {editingPrompt && (
+              <EditPromptModal
+                prompt={editingPrompt}
+                onClose={() => setEditingPrompt(null)}
+                onPromptUpdated={(updatedPrompt) => {
+                  setPrompts(prev =>
+                    prev.map(prompt =>
+                      prompt.id === updatedPrompt.id ? updatedPrompt : prompt
+                    )
+                  );
+                  setEditingPrompt(null);
+                }}
+                onPromptDeleted={(promptId) => {
+                  setPrompts(prev => prev.filter(prompt => prompt.id !== promptId));
+                  setEditingPrompt(null);
+                }}
+              />
+            )}
           </div>
         );
       
@@ -407,7 +594,7 @@ Additional Context: ${request.context}`;
           <>
             <ResponseGenerator
               clients={displayedClients}
-              prompts={displayedPrompts.filter(p => p.responseType === 'proposal')}
+              prompts={prompts.filter(p => p.responseType === 'proposal')}
               onGenerate={handleGenerateResponse}
               isGenerating={isGenerating}
             />
@@ -435,100 +622,6 @@ Additional Context: ${request.context}`;
                           // Additional logic to scroll to or highlight the client
                         }}
                       />
-                    );
-                  })}
-              </div>
-            )}
-          </>
-        );
-      
-      case 'responses':
-        return (
-          <>
-            <ResponseGenerator
-              clients={displayedClients}
-              prompts={displayedPrompts.filter(p => p.responseType === 'email')}
-              onGenerate={handleGenerateResponse}
-              isGenerating={isGenerating}
-            />
-
-            {displayedResponses.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-gray-400">
-                  {searchQuery ? 'No responses match your search.' : 'No responses found.'}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {displayedResponses
-                  .filter(response => response.responseType === 'email')
-                  .map((response) => {
-                    const client = clients.find((c) => c.id === response.clientId);
-                    return (
-                      <div key={response.id} className="bg-gray-800 rounded-lg shadow-md p-6 border border-gray-700">
-                        <div className="flex items-center justify-between mb-4">
-                          <div>
-                            <h3 className="text-lg font-medium text-gray-100">{response.summary}</h3>
-                            <p className="text-sm text-gray-400">
-                              For: {client?.name} • {format(response.createdAt, 'MMM d, yyyy')}
-                            </p>
-                          </div>
-                          <span
-                            className={`px-3 py-1 rounded-full text-sm font-medium ${
-                              response.status === 'pending'
-                                ? 'bg-yellow-900/50 text-yellow-200'
-                                : response.status === 'approved'
-                                ? 'bg-green-900/50 text-green-200'
-                                : 'bg-red-900/50 text-red-200'
-                            }`}
-                          >
-                            {response.status.charAt(0).toUpperCase() + response.status.slice(1)}
-                          </span>
-                        </div>
-                        
-                        <div className="prose prose-invert max-w-none mb-4">
-                          <div className="whitespace-pre-wrap text-gray-300">{response.content}</div>
-                        </div>
-                        
-                        {response.missingInfo.length > 0 && (
-                          <div className="mb-4">
-                            <h4 className="text-sm font-medium text-gray-300 mb-2">Missing Information:</h4>
-                            <ul className="list-disc list-inside text-sm text-gray-400">
-                              {response.missingInfo.map((info, index) => (
-                                <li key={index}>{info}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        
-                        <div className="flex space-x-4">
-                          <button
-                            onClick={() => {
-                              const updatedResponse = { ...response, status: 'approved' as const };
-                              setResponses(prev =>
-                                prev.map(r => r.id === response.id ? updatedResponse : r)
-                              );
-                            }}
-                            className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
-                          >
-                            Approve
-                          </button>
-                          <button
-                            onClick={() => setEditingResponse(response)}
-                            className="px-4 py-2 bg-gray-700 text-gray-300 rounded-md hover:bg-gray-600"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => {
-                              setResponses(prev => prev.filter(r => r.id !== response.id));
-                            }}
-                            className="px-4 py-2 bg-gray-700 text-gray-300 rounded-md hover:bg-gray-600"
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      </div>
                     );
                   })}
               </div>
@@ -739,6 +832,33 @@ Additional Context: ${request.context}`;
           />
         )}
 
+        {/* Edit Client Modal */}
+        {editingClient && (
+          <EditClientModal
+            client={editingClient}
+            onClose={() => setEditingClient(null)}
+            onClientUpdated={(updatedClient) => {
+              setClients(prev => prev.map(client => 
+                client.id === updatedClient.id ? updatedClient : client
+              ));
+              setEditingClient(null);
+            }}
+            onClientDeleted={(clientId) => {
+              setClients(prev => prev.filter(client => client.id !== clientId));
+              setEditingClient(null);
+            }}
+          />
+        )}
+
+        {/* Edit Response Modal */}
+        {editingResponse && (
+          <EditResponseModal
+            response={editingResponse}
+            onClose={() => setEditingResponse(null)}
+            onSave={handleResponseUpdated}
+          />
+        )}
+
         {/* Rest of the dashboard content */}
         <div className="space-y-6">
           <TabNavigation
@@ -749,6 +869,49 @@ Additional Context: ${request.context}`;
           {renderContent()}
         </div>
       </DashboardLayout>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-sm mx-4 border border-gray-700">
+            <h3 className="text-lg font-medium text-gray-100 mb-4">Confirm Delete</h3>
+            <p className="text-sm text-gray-300 mb-4">
+              Are you sure you want to delete {selectedClients.size} {selectedClients.size === 1 ? 'client' : 'clients'}? This action cannot be undone.
+            </p>
+            <div className="mb-4">
+              <label htmlFor="confirmDelete" className="block text-sm font-medium text-gray-300 mb-2">
+                Type "confirm" to proceed
+              </label>
+              <input
+                type="text"
+                id="confirmDelete"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                placeholder="Type 'confirm' here"
+              />
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setDeleteConfirmText('');
+                }}
+                className="px-4 py-2 bg-gray-700 text-gray-300 rounded-md hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={isDeleting || deleteConfirmText !== 'confirm'}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-red-800 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardErrorBoundary>
   );
 }
